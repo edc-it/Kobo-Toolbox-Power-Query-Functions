@@ -1,0 +1,18 @@
+let 
+ func = 
+	   (#"API Token" as text, #"Asset UID" as text) => let
+		Source = Excel.Workbook(Web.Contents("https://kf.kobotoolbox.org/api/v2/assets/", [RelativePath = #"Asset UID" & "/?format=xls", Headers=[Authorization="Token "&#"API Token"]])),
+		choices_Sheet = Source{[Item="choices",Kind="Sheet"]}[Data],
+		#"Promoted Headers" = Table.PromoteHeaders(choices_Sheet, [PromoteAllScalars=true])
+	in
+		#"Promoted Headers"
+ ,
+documentation = [
+  Documentation.Name = "FnGetSurveyChoices",
+  Documentation.Description = "Get choices from a KoBoToolbox form using the API(kpi)",
+  Documentation.LongDescription = "Get choices from a KoBoToolbox form using the API (kpi v2)",
+  Documentation.Category = "Text",
+  Documentation.Examples = {[Description = "Returns a table with the choices from a KoBoToolbox form using the API Token and Asset UID.", Code = "FnGetSurveyChoices(""your-api-token"",""your-asset-uid"").", Result = "To find your API Token go to#(lf)https://kf.kobotoolbox.org/token/?format=json.#(lf)#(lf)To find your form Asset UID go to#(lf)https://kf.kobotoolbox.org/api/v2/assets/.#(lf)#(lf)More information: https://support.kobotoolbox.org/api.html"]}
+ ]
+in
+ Value.ReplaceType(func, Value.ReplaceMetadata(Value.Type(func), documentation))

@@ -1,0 +1,39 @@
+let 
+ func = 
+
+ (#"API Token" as text, #"Asset UID" as text) => let
+    // fnGetSurveyColumns gets survey columns and removes group names
+    Source1 = Excel.Workbook(Web.Contents("https://kf.kobotoolbox.org/api/v2/assets/", [RelativePath = #"Asset UID" & "/?format=xls", Headers=[Authorization="Token "&#"API Token"]])),
+    survey_Sheet = Source1{[Item="survey",Kind="Sheet"]}[Data],
+    #"Promoted Headers" = Table.PromoteHeaders(survey_Sheet, [PromoteAllScalars=true]),
+    #"Added Index" = Table.AddIndexColumn(#"Promoted Headers", "Index", 1, 1, Int64.Type),
+    #"Added GroupCounter" = Table.AddColumn(#"Added Index", "Group", each if [type] = "begin_group" then 1 else if [type] = "end_group" then -1 else 0),
+    #"Added GroupIdentifier" = Table.AddColumn(#"Added GroupCounter", "GroupIdentifier", each List.Sum(List.FirstN(#"Added GroupCounter"[Group],[Index]))),
+    #"Added GroupName" = Table.AddColumn(#"Added GroupIdentifier", "GroupName", each if [Group] = 1 then [name] else null),
+    #"Added FillDown" = Table.FillDown(#"Added GroupName",{"GroupName"}),
+    #"Added Column" = Table.AddColumn(#"Added FillDown", "Column", each if [GroupIdentifier] = 1 then [GroupName]&"/"&[name] else [name]),
+    #"Filtered Rows1" = Table.SelectRows(#"Added Column", each ([type] <> "begin_group" and [type] <> "end_group")),
+    #"Filtered Rows" = Table.SelectRows(#"Filtered Rows1", each ([Column] <> null)),
+    #"Removed Other Columns" = Table.SelectColumns(#"Filtered Rows",{"Column"}),
+    Columns = Text.Combine(List.Transform(#"Removed Other Columns"[Column], (x) => x) & {"_id", "_uuid", "_submission_time", "_validation_status"}, ","),
+    // fnGetSurveyData gets survey data
+    Source2 = Json.Document(Web.Contents("https://kf.kobotoolbox.org/api/v2/assets/", [RelativePath = #"Asset UID" & "/data/?format=json", Headers=[Authorization="Token "&#"API Token"]]), 65001),
+    ConvertedToTable = Table.FromRecords({Source2}),
+    ExpandedResults = Table.ExpandListColumn(ConvertedToTable, "results"),
+    ExpandedColumns = Table.ExpandRecordColumn(ExpandedResults, "results", Text.Split(Columns,",")),
+    ListedColumns = Table.FromList(Table.ColumnNames(ExpandedColumns), Splitter.SplitByNothing(), null, null, ExtraValues.Error),
+    DuplicatedColumn = Table.DuplicateColumn(ListedColumns, "Column1", "Column2"),
+    ExtractedGroupNames = Table.TransformColumns(DuplicatedColumn, {{"Column2", each Text.AfterDelimiter(_, "/", {0, RelativePosition.FromEnd}), type text}}),
+    RenamedColumns = Table.RenameColumns(ExpandedColumns,Table.ToRows(ExtractedGroupNames),MissingField.Ignore)
+in
+    RenamedColumns
+ ,
+documentation = [
+  Documentation.Name = "FnGetSurveyData",
+  Documentation.Description = "Get data from a form submitted to KoBoToolbox using the API(kpi)",
+  Documentation.LongDescription = "Get data from a form submitted to KoBoToolbox using the API (kpi v2)",
+  Documentation.Category = "Text",
+  Documentation.Examples = {[Description = "Returns data from KoBoToolbox using the API Token and Asset UID.", Code = "FnGetSurveyData(""your-api-token"",""your-asset-uid"").", Result = "To find your API Token go to#(lf)https://kf.kobotoolbox.org/token/?format=json.#(lf)#(lf)To find your form Asset UID go to#(lf)https://kf.kobotoolbox.org/api/v2/assets/.#(lf)#(lf)More information: https://support.kobotoolbox.org/api.html"]}
+ ]
+in
+ Value.ReplaceType(func, Value.ReplaceMetadata(Value.Type(func), documentation))
